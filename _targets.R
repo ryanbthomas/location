@@ -10,12 +10,15 @@ library(dplyr)
 library(tidyr)
 library(rvest)
 library(purrr)
+library(future)
+library(future.callr)
+
 
 # library(tarchetypes) # Load other packages as needed. # nolint
 
 # Set target options:
 tar_option_set(
-  packages = c("tibble"), # packages that your targets need to run
+  packages = c("tibble", "readxl", "dplyr", "tidyr", "rvest", "purrr"), # packages that your targets need to run
   format = "rds" # default storage format
   # Set other options as needed.
 )
@@ -28,6 +31,9 @@ options(clustermq.scheduler = "multicore")
 
 # Load the R scripts with your custom functions:
 lapply(list.files("R", full.names = TRUE, recursive = TRUE), source)
+
+#future execution plan
+plan(callr)
 
 # Replace the target list below with your own:
 list(
@@ -43,12 +49,13 @@ list(
     ),
     tar_target(
         name = viable_cities,
-        command = create_viable_cities(all_cities, viable_states)
+        command = create_viable_cities(all_cities, viable_states),
+        deployment = "main"
     ),
     tar_target(
         name = viable_neighborhoods,
         command = fetch_neighborhoods_row(viable_cities),
         pattern = map(viable_cities),
-        iteration = "vector"
+        iteration = "vector" 
     )
 )

@@ -12,10 +12,10 @@ find_redfin_neighborhood_url <- function(nbrd_paths) {
     result <- rep(NA_character_, length(nbrd_paths))
     #browser()
     for (i in seq_along(nbrd_paths)) {
-        walkable_nbhrd <- read_html(paste0("https://www.walkscore.com/", nbrd_paths[i]))
+        walkable_nbhrd <- read_html(paste0("https://www.walkscore.com", nbrd_paths[i]))
     
         pattern <- paste0(
-            "redfin\\.com/neighborhood/[0-9]+", 
+            "redfin\\.com/neighborhood/[0-9]+/", 
             stringr::str_sub(nbrd_paths[i], 1, 2)
             )
     
@@ -31,11 +31,12 @@ find_redfin_neighborhood_url <- function(nbrd_paths) {
 }
 
 fetch_neighborhoods_row <- function(row_of_df) {
-    fetch_neighborhoods(row_of_df[["walkable_url_path"]])
+    fetch_neighborhoods(row_of_df[["walkable_url_path"]]) |>
+        mutate(city_id = row_of_df[["id"]])
 }
 
 fetch_neighborhoods <- function(url_path) {
-    print(url_path)
+    message(url_path)
     walkable <- rvest::read_html(paste0("https://www.walkscore.com/", url_path))
     
     neighborhoods <- walkable |>
@@ -82,9 +83,9 @@ fetch_neighborhoods <- function(url_path) {
         stringr::str_subset(paste0(url_path, "/")) 
     
     #picked extra url in San Diego. You can rely on exact number in exact order
-    browser()
-    neighborhoods %>%
-        html_table() %>%
+
+    nbrhd_tbl <- neighborhoods %>%
+        html_table(na.strings = "-", convert = FALSE) %>%
         rename(
             Neighborhood = Name,
             Rank = `Rank#`, 
@@ -92,11 +93,27 @@ fetch_neighborhoods <- function(url_path) {
             Transit_Score = `Transit Score`, 
             Bike_Score = `Bike Score`) %>%
         mutate(
-            dplyr::across(.cols = dplyr::ends_with("Score"), as.integer),
-            Population = as.integer(stringr::str_remove_all(Population, ",")),
-            Redfin_url = find_redfin_neighborhood_url(nbrhd_paths)
-                                    
+            dplyr::across(.cols = !dplyr::all_of(c("Neighborhood","Population")), .fns = as.integer),
+            Population = as.integer(stringr::str_remove_all(Population, ","))
         )
     
+    pattern_nbrhd_paths <- paste0(
+        "/", url_path, 
+        "/", URLencode(stringr::str_replace_all(nbrhd_tbl[["Neighborhood"]], " ", "_"), reserved = TRUE)
+    )
+    
+    if (! all(pattern_nbrhd_paths %in% nbrhd_paths)) {
+        not_matched_idx <- !pattern_nbrhd_paths %in% nbrhd_paths
+        nbrhds_not_matched <- paste0(pattern_nbrhd_paths[not_matched_idx], collapse = ", ")
+        stop("These nbrhds don't fit the usual pattern: ", nbrhds_not_matched, call. = FALSE)
+        
+        pattern_nbrhd_paths[not_matched_idx] <- NA_character_
+    }
+    
+    nbrhd_tbl$Redfin_url <- find_redfin_neighborhood_url(pattern_nbrhd_paths)
+        #    Redfin_url = find_redfin_neighborhood_url(Name, nbrhd_paths)
+                                    
+        
+    nbrhd_tbl
 }
 
